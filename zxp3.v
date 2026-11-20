@@ -243,6 +243,7 @@ module zxp3
 
 	wire[7:0] d
 		= !mreq ? q2
+		: !iorq && !m1 ? 8'hFF // interrupt acknowledge: IM2 vector reads FF on the +3
 		: iorq3FFD ? fddQ
 		: iorqFFFD ? tbsQ
 		: iorqFADF ? { 5'h1F, mbtns }
