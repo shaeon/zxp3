@@ -1,3 +1,6 @@
 [submodule "T80"]
 	path = T80
 	url = https://github.com/mist-devel/T80.git
+[submodule "z80"]
+	path = z80
+	url = https://github.com/shaeon/z80-silicon-rtl.git
