@@ -42,6 +42,15 @@ always @(posedge clock) begin rfshd <= rfsh; rfshp <= !rfsh && rfshd; end
 
 initial ready = 0;
 
+// Auto refresh: the CPU refreshes the SDRAM on every M1, but while it is held in reset (ROM
+// upload, VHD mount, F9...) there is no refresh at all and the data can decay. If REF_MAX clocks
+// pass without a refresh, the controller does one itself. Requests arriving while busy are kept
+// pending and served afterwards (CPU and data_io hold address and data long enough).
+localparam REF_MAX = 10'd400; // ~7 us at 56 MHz (8192 rows / 64 ms = 7.8 us)
+
+reg[9:0] refCnt = 1'd0;
+reg rdPend = 1'b0, wrPend = 1'b0;
+
 localparam sIDLE = 0;
 localparam sREAD = 1;
 localparam sWRITE = 2;
@@ -67,13 +76,15 @@ always @(negedge clock) begin
 			11272: REFRESH;
 			11280: ready <= 1'b1;
 		endcase
-	else
+	else begin
+		if(refCnt != 10'h3FF) refCnt <= refCnt+1'd1;
+		if(state != sIDLE) begin if(rdp) rdPend <= 1'b1; if(wrp) wrPend <= 1'b1; end
 		case(state)
 			sIDLE: begin
 				count <= 1'd0;
-				if(rdp) begin ACTIVE(a[23:22], a[21:9]); state <= sREAD; end else
-				if(wrp) begin ACTIVE(a[23:22], a[21:9]); state <= sWRITE; end else
-				if(rfshp) begin REFRESH; state <= sREFRESH; end
+				if(rdp || rdPend) begin ACTIVE(a[23:22], a[21:9]); state <= sREAD; rdPend <= 1'b0; if(wrp) wrPend <= 1'b1; end else
+				if(wrp || wrPend) begin ACTIVE(a[23:22], a[21:9]); state <= sWRITE; wrPend <= 1'b0; end else
+				if(rfshp || refCnt >= REF_MAX) begin REFRESH; state <= sREFRESH; refCnt <= 1'd0; end
 			end
 			sREAD:
 				case(count)
@@ -90,6 +101,7 @@ always @(negedge clock) begin
 					3: state <= sIDLE;
 				endcase
 		endcase
+	end
 end
 
 //-------------------------------------------------------------------------------------------------
